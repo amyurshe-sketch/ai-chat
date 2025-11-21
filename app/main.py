@@ -26,6 +26,15 @@ def get_agent(request: Request) -> YandexGPTAgent:
     return request.app.state.agent
 
 
+def require_agent_secret(request: Request, settings=get_settings()):
+    secret = settings.ai_agent_secret
+    if not secret:
+        return
+    incoming = request.headers.get("X-Agent-Secret")
+    if incoming != secret:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
 def create_app() -> FastAPI:
     static_dir = Path(__file__).resolve().parent / "static"
     app = FastAPI(
@@ -74,6 +83,7 @@ def create_app() -> FastAPI:
     )
     async def chat(
         chat_request: ChatRequest,
+        _: None = Depends(require_agent_secret),
         agent: YandexGPTAgent = Depends(get_agent),
     ) -> ChatResponse:
         try:

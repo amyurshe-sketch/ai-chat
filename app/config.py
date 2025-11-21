@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     yandex_temperature: float = Field(default=0.3, alias="YANDEX_TEMPERATURE")
     yandex_max_tokens: int = Field(default=800, alias="YANDEX_MAX_TOKENS")
     request_timeout: float = Field(default=30.0, alias="REQUEST_TIMEOUT")
+    ai_agent_secret: Optional[str] = Field(default=None, alias="AI_AGENT_SECRET")
 
     @property
     def model_uri(self) -> str:

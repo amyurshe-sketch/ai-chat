@@ -1,0 +1,12 @@
+# Python venv and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Env/config secrets
+.env
+
+# Node/OS clutter
+.DS_Store

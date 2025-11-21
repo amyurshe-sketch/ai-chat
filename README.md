@@ -18,7 +18,14 @@ app/
 
 ## Запуск
 1. Скопируйте `.env.example` → `.env` и заполните `YANDEX_API_KEY`, `YANDEX_FOLDER_ID`, при необходимости модель и параметры генерации.
-2. Запуск в Docker:
+2. Локально (venv):
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000
+   ```
+3. Запуск в Docker:
    - Через Docker Compose (если установлен плагин `docker compose` / `docker-compose`):
      ```bash
      # с новым плагином
@@ -31,7 +38,8 @@ app/
      docker build -t ai-agent .
      docker run --rm -p 8000:8000 --env-file .env ai-agent
      ```
-3. Отправляйте запросы на `POST /api/chat` из своего клиентского приложения/сайта.
+4. Render/хостинг: используйте Python 3.11 (см. `runtime.txt`), так берутся готовые колёса pydantic-core без сборки Rust. Build command: `pip install -r requirements.txt`; start command: `uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000`.
+5. Отправляйте запросы на `POST /api/chat` из своего клиентского приложения/сайта.
 
 ### Локально (без Docker)
 ```bash

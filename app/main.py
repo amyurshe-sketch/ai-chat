@@ -1,5 +1,8 @@
 from pathlib import Path
 from contextlib import asynccontextmanager
+from collections import deque
+import time
+from typing import Deque, Dict
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -7,7 +10,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from .agent import YandexGPTAgent
-from .config import get_settings
+from .config import Settings, get_settings
 from .schemas import ChatRequest, ChatResponse, ErrorResponse
 
 
@@ -15,7 +18,12 @@ from .schemas import ChatRequest, ChatResponse, ErrorResponse
 async def lifespan(app: FastAPI):
     settings = get_settings()
     agent = YandexGPTAgent(settings=settings)
+    limiter = RateLimiter(
+        limit=settings.rate_limit_requests,
+        window_sec=settings.rate_limit_window_sec,
+    )
     app.state.agent = agent
+    app.state.limiter = limiter
     try:
         yield
     finally:
@@ -26,6 +34,10 @@ def get_agent(request: Request) -> YandexGPTAgent:
     return request.app.state.agent
 
 
+def get_rate_limiter(request: Request) -> "RateLimiter":
+    return request.app.state.limiter
+
+
 def require_agent_secret(request: Request, settings=get_settings()):
     secret = settings.ai_agent_secret
     if not secret:
@@ -33,6 +45,20 @@ def require_agent_secret(request: Request, settings=get_settings()):
     incoming = request.headers.get("X-Agent-Secret")
     if incoming != secret:
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def require_rate_limit(
+    request: Request,
+    limiter: "RateLimiter" = Depends(get_rate_limiter),
+) -> None:
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, retry_after = limiter.allow(client_ip)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Слишком много запросов. Попробуйте позже.",
+            headers={"Retry-After": str(int(retry_after))},
+        )
 
 
 def create_app() -> FastAPI:
@@ -84,6 +110,7 @@ def create_app() -> FastAPI:
     async def chat(
         chat_request: ChatRequest,
         _: None = Depends(require_agent_secret),
+        __: None = Depends(require_rate_limit),
         agent: YandexGPTAgent = Depends(get_agent),
     ) -> ChatResponse:
         try:
@@ -98,3 +125,23 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return app
+
+
+class RateLimiter:
+    """In-memory sliding window limiter per client."""
+
+    def __init__(self, limit: int, window_sec: float):
+        self.limit = max(1, limit)
+        self.window = max(1.0, window_sec)
+        self._hits: Dict[str, Deque[float]] = {}
+
+    def allow(self, key: str) -> tuple[bool, float]:
+        now = time.time()
+        bucket = self._hits.setdefault(key, deque())
+        while bucket and now - bucket[0] > self.window:
+            bucket.popleft()
+        if len(bucket) >= self.limit:
+            retry_after = max(1.0, self.window - (now - bucket[0]))
+            return False, retry_after
+        bucket.append(now)
+        return True, 0.0

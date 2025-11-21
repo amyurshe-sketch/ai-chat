@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     yandex_max_tokens: int = Field(default=800, alias="YANDEX_MAX_TOKENS")
     request_timeout: float = Field(default=30.0, alias="REQUEST_TIMEOUT")
     ai_agent_secret: Optional[str] = Field(default=None, alias="AI_AGENT_SECRET")
+    rate_limit_requests: int = Field(default=60, alias="RATE_LIMIT_REQUESTS_PER_MINUTE")
+    rate_limit_window_sec: float = Field(default=60.0, alias="RATE_LIMIT_WINDOW_SEC")
 
     @property
     def model_uri(self) -> str:

@@ -14,7 +14,7 @@ class ChatMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1)
+    message: str = Field(..., min_length=1, max_length=100)
     chat_id: Optional[str] = None
     history: List[ChatMessage] = Field(default_factory=list)
     channel: str = Field(default="web")

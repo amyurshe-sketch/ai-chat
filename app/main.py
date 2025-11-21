@@ -97,6 +97,10 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def healthcheck():
         return {"status": "ok"}
+    
+    @app.get("/healthz", include_in_schema=False)
+    async def healthz():
+        return {"status": "ok"}
 
     @app.get("/favicon.ico", include_in_schema=False)
     async def favicon():

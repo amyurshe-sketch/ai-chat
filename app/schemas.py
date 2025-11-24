@@ -18,6 +18,8 @@ class ChatRequest(BaseModel):
     chat_id: Optional[str] = None
     history: List[ChatMessage] = Field(default_factory=list)
     channel: str = Field(default="web")
+    user_id: Optional[int] = None
+    user_profile: Optional[dict] = None  # опционально передаваемый слепок профиля
 
 
 class ChatResponse(BaseModel):

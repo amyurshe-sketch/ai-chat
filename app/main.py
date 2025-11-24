@@ -2,8 +2,9 @@ from typing import Tuple
 from pathlib import Path
 from contextlib import asynccontextmanager
 from collections import deque
+import json
 import time
-from typing import Deque, Dict
+from typing import Deque, Dict, List, Optional
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -12,19 +13,22 @@ from fastapi.staticfiles import StaticFiles
 
 from .agent import YandexGPTAgent
 from .config import Settings, get_settings
-from .schemas import ChatRequest, ChatResponse, ErrorResponse
+from .schemas import ChatMessage, ChatRequest, ChatResponse, ErrorResponse
+from .db import AIChat, AIMessage, db_session, init_db
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
     agent = YandexGPTAgent(settings=settings)
+    db_sessionmaker = init_db(settings)
     limiter = RateLimiter(
         limit=settings.rate_limit_requests,
         window_sec=settings.rate_limit_window_sec,
     )
     app.state.agent = agent
     app.state.limiter = limiter
+    app.state.db_sessionmaker = db_sessionmaker
     try:
         yield
     finally:
@@ -37,6 +41,10 @@ def get_agent(request: Request) -> YandexGPTAgent:
 
 def get_rate_limiter(request: Request) -> "RateLimiter":
     return request.app.state.limiter
+
+
+def get_db_sessionmaker(request: Request):
+    return getattr(request.app.state, "db_sessionmaker", None)
 
 
 def require_agent_secret(request: Request, settings=get_settings()):
@@ -117,9 +125,71 @@ def create_app() -> FastAPI:
         _: None = Depends(require_agent_secret),
         __: None = Depends(require_rate_limit),
         agent: YandexGPTAgent = Depends(get_agent),
+        request: Request = None,  # type: ignore[assignment]
+        db_sessionmaker=Depends(get_db_sessionmaker),
     ) -> ChatResponse:
+        # Подхватываем user_id / профиль из заголовков, если в теле нет
+        user_id = chat_request.user_id
+        user_profile = chat_request.user_profile
+        if user_id is None and request:
+            header_uid = request.headers.get("X-User-Id")
+            if header_uid and header_uid.isdigit():
+                user_id = int(header_uid)
+        if user_profile is None and request:
+            header_profile = request.headers.get("X-User-Profile")
+            if header_profile:
+                try:
+                    user_profile = json.loads(header_profile)
+                except json.JSONDecodeError:
+                    user_profile = None
+
+        # Если история не передана, попробуем взять из БД по chat_id
+        effective_history = chat_request.history
+        if not effective_history and chat_request.chat_id and db_sessionmaker:
+            with db_session(db_sessionmaker) as session:
+                rows = (
+                    session.query(AIMessage)
+                    .filter(AIMessage.chat_id == chat_request.chat_id)
+                    .order_by(AIMessage.created_at.asc())
+                    .all()
+                )
+                effective_history = [ChatMessage(role=m.role, content=m.content) for m in rows]
+        prepared_request = chat_request.model_copy(
+            update={
+                "history": effective_history,
+                "user_id": user_id,
+                "user_profile": user_profile,
+            }
+        )
         try:
-            return await agent.generate_reply(chat_request)
+            response = await agent.generate_reply(prepared_request)
+            # Сохраняем историю в БД, если доступна
+            if db_sessionmaker:
+                with db_session(db_sessionmaker) as session:
+                    chat_row = session.get(AIChat, response.chat_id)
+                    if not chat_row:
+                        chat_row = AIChat(chat_id=response.chat_id, user_id=prepared_request.user_id)
+                        session.add(chat_row)
+                    snapshot = prepared_request.user_profile
+                    session.add(
+                        AIMessage(
+                            chat_id=response.chat_id,
+                            user_id=prepared_request.user_id,
+                            role="user",
+                            content=prepared_request.message,
+                            profile_snapshot=snapshot,
+                        )
+                    )
+                    session.add(
+                        AIMessage(
+                        chat_id=response.chat_id,
+                        user_id=prepared_request.user_id,
+                        role="assistant",
+                        content=response.answer,
+                        profile_snapshot=snapshot,
+                        )
+                    )
+            return response
         except RuntimeError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except httpx.HTTPStatusError as exc:

@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     ai_agent_secret: Optional[str] = Field(default=None, alias="AI_AGENT_SECRET")
     rate_limit_requests: int = Field(default=60, alias="RATE_LIMIT_REQUESTS_PER_MINUTE")
     rate_limit_window_sec: float = Field(default=60.0, alias="RATE_LIMIT_WINDOW_SEC")
+    database_url: Optional[str] = Field(default=None, alias="DATABASE_URL")
 
     @property
     def model_uri(self) -> str:

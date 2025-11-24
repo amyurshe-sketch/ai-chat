@@ -1,3 +1,4 @@
+from typing import Tuple
 from pathlib import Path
 from contextlib import asynccontextmanager
 from collections import deque
@@ -128,6 +129,30 @@ def create_app() -> FastAPI:
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    # Совместимость со старым путём /api/ai-chat (фронт/бэкенд могут слать сюда)
+    @app.post(
+        "/api/ai-chat",
+        response_model=ChatResponse,
+        responses={502: {"model": ErrorResponse}},
+        include_in_schema=False,
+    )
+    async def legacy_chat(
+        chat_request: ChatRequest,
+        _: None = Depends(require_agent_secret),
+        __: None = Depends(require_rate_limit),
+        agent: YandexGPTAgent = Depends(get_agent),
+    ) -> ChatResponse:
+        try:
+            return await agent.generate_reply(chat_request)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                status_code=exc.response.status_code, detail=exc.response.text
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
     return app
 
 
@@ -139,7 +164,7 @@ class RateLimiter:
         self.window = max(1.0, window_sec)
         self._hits: Dict[str, Deque[float]] = {}
 
-    def allow(self, key: str) -> tuple[bool, float]:
+    def allow(self, key: str) -> Tuple[bool, float]:
         now = time.time()
         bucket = self._hits.setdefault(key, deque())
         while bucket and now - bucket[0] > self.window:

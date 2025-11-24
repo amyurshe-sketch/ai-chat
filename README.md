@@ -18,6 +18,8 @@ app/
 
 ## Запуск
 1. Скопируйте `.env.example` → `.env` и заполните `YANDEX_API_KEY`, `YANDEX_FOLDER_ID`, при необходимости модель и параметры генерации.
+   - Для стандартных моделей укажите `YANDEX_MODEL` (по умолчанию `yandexgpt-lite`).
+   - Для своего дообученного чекпоинта можно задать полный `YANDEX_MODEL_URI`, например `gpt://b1gcplike7u7f9aomov5/yandexgpt-lite/latest@tamrerrkmvskfa7ekhiei` (этот URI уже проставлен в `.env.example` для локального запуска).
 2. Локально (venv):
    ```bash
    python3 -m venv .venv

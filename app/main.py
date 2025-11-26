@@ -81,6 +81,9 @@ def create_app() -> FastAPI:
         title="AI Chat",
         version="0.1.0",
         description="HTTP API для общения с Yandex GPT и подключения внешних чатов.",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
         lifespan=lifespan,
     )
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -94,7 +97,7 @@ def create_app() -> FastAPI:
     async def healthcheck(request: Request):
         require_internal(request)
         return {"status": "ok"}
-    
+
     @app.get("/healthz", include_in_schema=False)
     async def healthz(request: Request):
         require_internal(request)

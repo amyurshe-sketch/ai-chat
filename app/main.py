@@ -55,6 +55,11 @@ def require_agent_secret(request: Request, settings=get_settings()):
     if incoming != secret:
         raise HTTPException(status_code=403, detail="Forbidden")
 
+def require_internal(request: Request):
+    host = request.client.host if request and request.client else ""
+    if host not in {"127.0.0.1", "::1"}:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
 
 def require_rate_limit(
     request: Request,
@@ -81,34 +86,18 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    async def root():
-        return """
-        <!doctype html>
-        <html lang="ru">
-          <head>
-            <meta charset="UTF-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <title>AI Chat</title>
-            <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
-          </head>
-          <body style="font-family: Arial, sans-serif; background:#0b1220; color:#f8fafc; margin:0; display:flex; align-items:center; justify-content:center; min-height:100vh;">
-            <div style="text-align:center;">
-              <div style="display:inline-flex; align-items:center; justify-content:center; width:72px; height:72px; border-radius:16px; background:linear-gradient(120deg,#0b1220,#111a2f); border:1px solid rgba(148,163,184,0.2); margin-bottom:14px;">
-                <span style="font-size:34px; font-weight:800; letter-spacing:0.02em;">AI</span>
-              </div>
-              <h1 style="margin:0 0 8px; font-size:28px;">AI Chat</h1>
-              <p style="margin:0; color:rgba(248,250,252,0.8);">Сервис запущен · /api/chat</p>
-            </div>
-          </body>
-        </html>
-        """
+    async def root(request: Request):
+        require_internal(request)
+        return HTMLResponse(status_code=403, content="Forbidden")
 
     @app.get("/health")
-    async def healthcheck():
+    async def healthcheck(request: Request):
+        require_internal(request)
         return {"status": "ok"}
     
     @app.get("/healthz", include_in_schema=False)
-    async def healthz():
+    async def healthz(request: Request):
+        require_internal(request)
         return {"status": "ok"}
 
     @app.get("/favicon.ico", include_in_schema=False)

@@ -70,7 +70,7 @@ def require_rate_limit(
     if not allowed:
         raise HTTPException(
             status_code=429,
-            detail="Слишком много запросов. Попробуйте позже.",
+            detail="Too many requests. Please try again later.",
             headers={"Retry-After": str(int(retry_after))},
         )
 
@@ -80,7 +80,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="AI Chat",
         version="0.1.0",
-        description="HTTP API для общения с Yandex GPT и подключения внешних чатов.",
+        description="HTTP API for chatting with Yandex GPT and connecting external chats.",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -115,11 +115,29 @@ def create_app() -> FastAPI:
     async def chat(
         chat_request: ChatRequest,
         _: None = Depends(require_agent_secret),
-        __: None = Depends(require_rate_limit),
         agent: YandexGPTAgent = Depends(get_agent),
         request: Request = None,  # type: ignore[assignment]
         db_sessionmaker=Depends(get_db_sessionmaker),
-    ) -> ChatResponse:
+        ) -> ChatResponse:
+        # Enforce rate limit per user_id (if provided) else per IP
+        limiter: RateLimiter = get_rate_limiter(request)
+        client_ip = request.client.host if request and request.client else "unknown"
+        key = None
+        if chat_request.user_id is not None:
+            key = f"user:{chat_request.user_id}"
+        elif request:
+            header_uid = request.headers.get("X-User-Id")
+            if header_uid and header_uid.isdigit():
+                key = f"user:{header_uid}"
+        if key is None:
+            key = f"ip:{client_ip}"
+        allowed, retry_after = limiter.allow(key)
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many requests. Please try again later.",
+                headers={"Retry-After": str(int(retry_after))},
+            )
         # Подхватываем user_id / профиль из заголовков, если в теле нет
         user_id = chat_request.user_id
         user_profile = chat_request.user_profile
@@ -201,9 +219,28 @@ def create_app() -> FastAPI:
     async def legacy_chat(
         chat_request: ChatRequest,
         _: None = Depends(require_agent_secret),
-        __: None = Depends(require_rate_limit),
         agent: YandexGPTAgent = Depends(get_agent),
+        request: Request = None,  # type: ignore[assignment]
     ) -> ChatResponse:
+        # Reuse the same per-user/IP limiter logic
+        limiter: RateLimiter = get_rate_limiter(request)
+        client_ip = request.client.host if request and request.client else "unknown"
+        key = None
+        if chat_request.user_id is not None:
+            key = f"user:{chat_request.user_id}"
+        elif request:
+            header_uid = request.headers.get("X-User-Id")
+            if header_uid and header_uid.isdigit():
+                key = f"user:{header_uid}"
+        if key is None:
+            key = f"ip:{client_ip}"
+        allowed, retry_after = limiter.allow(key)
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many requests. Please try again later.",
+                headers={"Retry-After": str(int(retry_after))},
+            )
         try:
             return await agent.generate_reply(chat_request)
         except RuntimeError as exc:

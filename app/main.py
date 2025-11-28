@@ -6,7 +6,7 @@ import json
 import time
 from typing import Deque, Dict, List, Optional
 
-import httpx
+from openai import APIConnectionError, APIStatusError, APITimeoutError
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -202,11 +202,13 @@ def create_app() -> FastAPI:
             return response
         except RuntimeError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except httpx.HTTPStatusError as exc:
+        except APIStatusError as exc:
             raise HTTPException(
-                status_code=exc.response.status_code, detail=exc.response.text
+                status_code=exc.status_code, detail=str(exc)
             ) from exc
-        except httpx.HTTPError as exc:
+        except (APIConnectionError, APITimeoutError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     # Совместимость со старым путём /api/ai-chat (фронт/бэкенд могут слать сюда)
@@ -245,11 +247,13 @@ def create_app() -> FastAPI:
             return await agent.generate_reply(chat_request)
         except RuntimeError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except httpx.HTTPStatusError as exc:
+        except APIStatusError as exc:
             raise HTTPException(
-                status_code=exc.response.status_code, detail=exc.response.text
+                status_code=exc.status_code, detail=str(exc)
             ) from exc
-        except httpx.HTTPError as exc:
+        except (APIConnectionError, APITimeoutError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return app

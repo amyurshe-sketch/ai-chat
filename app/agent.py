@@ -3,7 +3,12 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from openai import AsyncOpenAI
 from openai._types import NOT_GIVEN
-from openai.resources.responses import Responses
+
+# Some packaged builds of openai lack the responses resource; import defensively.
+try:
+    from openai.resources.responses import Responses
+except ImportError:
+    Responses = None
 
 from .config import Settings
 from .schemas import ChatMessage, ChatRequest, ChatResponse, RegisteredTool
@@ -42,7 +47,8 @@ class YandexGPTAgent:
             timeout=settings.request_timeout,
         )
         # Fallback: ensure responses resource exists even if the client package lacks it
-        self._client.responses = getattr(self._client, "responses", Responses(self._client))
+        if Responses:
+            self._client.responses = getattr(self._client, "responses", Responses(self._client))
         self.tool_registry = tool_registry or ToolRegistry()
 
     async def close(self) -> None:
@@ -70,6 +76,12 @@ class YandexGPTAgent:
             raise RuntimeError("Yandex credentials are not configured.")
 
         instructions, input_messages = self._build_input(chat_request)
+
+        if not getattr(self._client, "responses", None):
+            raise RuntimeError(
+                "OpenAI client build lacks responses resource. "
+                "Reinstall openai>=1.55 or use a build with assistant support."
+            )
 
         response = await self._client.responses.create(
             model=self.settings.model_uri,

@@ -3,6 +3,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from openai import AsyncOpenAI
 from openai._types import NOT_GIVEN
+from openai.resources.responses import Responses
 
 from .config import Settings
 from .schemas import ChatMessage, ChatRequest, ChatResponse, RegisteredTool
@@ -40,6 +41,8 @@ class YandexGPTAgent:
             project=settings.yandex_folder_id,
             timeout=settings.request_timeout,
         )
+        # Fallback: ensure responses resource exists even if the client package lacks it
+        self._client.responses = getattr(self._client, "responses", Responses(self._client))
         self.tool_registry = tool_registry or ToolRegistry()
 
     async def close(self) -> None:
@@ -65,12 +68,6 @@ class YandexGPTAgent:
     async def generate_reply(self, chat_request: ChatRequest) -> ChatResponse:
         if not self.settings.yandex_api_key or not self.settings.yandex_folder_id:
             raise RuntimeError("Yandex credentials are not configured.")
-
-        if not hasattr(self._client, "responses"):
-            raise RuntimeError(
-                "OpenAI client is too old for Yandex assistant API. "
-                "Update dependency: pip install -U 'openai>=1.55'"
-            )
 
         instructions, input_messages = self._build_input(chat_request)
 

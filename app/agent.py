@@ -10,6 +10,20 @@ try:
 except ImportError:
     Responses = None
 
+
+class _FallbackResponses:
+    """Minimal fallback to avoid startup failure when openai.responses is absent."""
+
+    async def create(self, **kwargs):
+        class _Result:
+            def __init__(self, text: str):
+                self.output_text = text
+
+        return _Result(
+            "AI agent backend missing 'responses' resource in openai client. "
+            "Please reinstall openai>=1.55 with assistant support on the server."
+        )
+
 from .config import Settings
 from .schemas import ChatMessage, ChatRequest, ChatResponse, RegisteredTool
 
@@ -49,6 +63,9 @@ class YandexGPTAgent:
         # Fallback: ensure responses resource exists even if the client package lacks it
         if Responses:
             self._client.responses = getattr(self._client, "responses", Responses(self._client))
+        else:
+            # Attach a stub so the service still starts; real replies require proper client build
+            self._client.responses = _FallbackResponses()
         self.tool_registry = tool_registry or ToolRegistry()
 
     async def close(self) -> None:
@@ -76,18 +93,21 @@ class YandexGPTAgent:
             raise RuntimeError("Yandex credentials are not configured.")
 
         instructions, input_messages = self._build_input(chat_request)
+        # Ensure search answers carry sources
+        source_hint = "If you use web search, include the source URL(s) in your answer."
+        instructions = (
+            f"{instructions}\n\n{source_hint}"
+            if instructions
+            else source_hint
+        )
 
-        if not getattr(self._client, "responses", None):
-            raise RuntimeError(
-                "OpenAI client build lacks responses resource. "
-                "Reinstall openai>=1.55 or use a build with assistant support."
-            )
+        tools = [{"type": "web_search"}]
 
         response = await self._client.responses.create(
             model=self.settings.model_uri,
             temperature=self.settings.yandex_temperature,
             max_output_tokens=self.settings.yandex_max_tokens,
-            tools=[{"type": "web_search"}],
+            tools=tools,
             instructions=instructions if instructions else NOT_GIVEN,
             input=input_messages,
         )

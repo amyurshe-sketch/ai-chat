@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     yandex_folder_id: Optional[str] = Field(default=None, alias="YANDEX_FOLDER_ID")
     yandex_model: str = Field(default="yandexgpt-lite", alias="YANDEX_MODEL")
     yandex_model_uri: Optional[str] = Field(default=None, alias="YANDEX_MODEL_URI")
+    yandex_kb_id: Optional[str] = Field(default=None, alias="YANDEX_KB_ID")
     yandex_temperature: float = Field(default=0.3, alias="YANDEX_TEMPERATURE")
     yandex_max_tokens: int = Field(default=800, alias="YANDEX_MAX_TOKENS")
     request_timeout: float = Field(default=30.0, alias="REQUEST_TIMEOUT")

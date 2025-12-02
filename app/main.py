@@ -60,6 +60,17 @@ def require_internal(request: Request):
     if host not in {"127.0.0.1", "::1"}:
         raise HTTPException(status_code=403, detail="Forbidden")
 
+def _rate_limit_message(request: Optional[Request]) -> str:
+    lang = ""
+    if request and request.headers:
+        lang = (request.headers.get("Accept-Language") or "").lower()
+    is_ru = lang.startswith("ru")
+    return (
+        "Слишком много запросов. Попробуйте позже."
+        if is_ru
+        else "Too many requests. Please try again later."
+    )
+
 
 def require_rate_limit(
     request: Request,
@@ -70,7 +81,7 @@ def require_rate_limit(
     if not allowed:
         raise HTTPException(
             status_code=429,
-            detail="Too many requests. Please try again later.",
+            detail=_rate_limit_message(request),
             headers={"Retry-After": str(int(retry_after))},
         )
 
@@ -135,7 +146,7 @@ def create_app() -> FastAPI:
         if not allowed:
             raise HTTPException(
                 status_code=429,
-                detail="Too many requests. Please try again later.",
+                detail=_rate_limit_message(request),
                 headers={"Retry-After": str(int(retry_after))},
             )
         # Подхватываем user_id / профиль из заголовков, если в теле нет
@@ -240,7 +251,7 @@ def create_app() -> FastAPI:
         if not allowed:
             raise HTTPException(
                 status_code=429,
-                detail="Too many requests. Please try again later.",
+                detail=_rate_limit_message(request),
                 headers={"Retry-After": str(int(retry_after))},
             )
         try:

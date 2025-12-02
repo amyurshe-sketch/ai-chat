@@ -49,9 +49,6 @@ class YandexGPTAgent:
     def _build_messages(self, chat_request: ChatRequest):
         if self.settings.yandex_system_prompt:
             yield {"role": "system", "text": self.settings.yandex_system_prompt}
-        # Передаём актуальную дату/время (UTC) как часть системного контекста
-        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S %Z")
-        yield {"role": "system", "text": f"Current date/time (UTC): {now_utc}"}
         if getattr(chat_request, "user_profile", None):
             try:
                 profile_text = json.dumps(chat_request.user_profile, ensure_ascii=False)
